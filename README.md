@@ -15,6 +15,8 @@ written approval. GitHub's API terms have no equivalent restriction for
 this kind of public-data analysis of open source repos.
 
 ---
+##Trained on repos like 
+microsoft/vscode,facebook/react,tensorflow/tensorflow,pytorch/pytorch,nodejs/node,fastapi/fastapi,django/django,pallets/flask,numpy/numpy,pandas-dev/pandas,scikit-learn/scikit-learn,psf/requests,huggingface/transformers,langchain-ai/langchain,openai/openai-python,streamlit/streamlit,vercel/next.js,nestjs/nest,vitejs/vite,electron/electron,golang/go,rust-lang/rust,kubernetes/kubernetes,apache/spark,elastic/elasticsearch,redis/redis,ansible/ansible,home-assistant/core,opencv/opencv,python/cpython
 ## Phase 0: Get a GitHub Personal Access Token (2 minutes)
 
 Unauthenticated requests are capped at 60/hour -- not enough to collect a
@@ -114,3 +116,26 @@ github-issue-predictor/
   issues without a feature flagging them
 - Repo-level baseline normalization -- a "3 day resolution" is fast for
   one repo and slow for another depending on maintainer activity level
+#pipeline go through
+GitHub API
+      ↓
+Data Collection
+      ↓
+Feature Engineering
+      ↓
+Model Training
+      ↓
+Model Comparison
+      ↓
+Streamlit Deployment
+
+               Model    MAE   RMSE     R2
+       Random Forest 1.4088 1.8483 0.4419
+             XGBoost 1.4633 1.8646 0.4320
+HistGradientBoosting 1.4628 1.8658 0.4313
+               Ridge 1.8064 2.1748 0.2273
+
+Best Model: Random Forest
+Saved:
+ - models/best_model.joblib
+ - models/model_results.csv

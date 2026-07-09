@@ -1,97 +1,156 @@
-"""
-Phase 5: Streamlit demo.
-
-Run with:
-    streamlit run app.py
-"""
-
-import os
-
-import joblib
-import numpy as np
-import pandas as pd
 import streamlit as st
+from src.styles import load_css
+from src.github_api import fetch_issue
+from src.feature_builder import build_features
+from src.predictor import predict_resolution_time
 
-MODEL_DIR = os.path.join(os.path.dirname(__file__), "models")
-FEATURES_PATH = os.path.join(os.path.dirname(__file__), "data", "processed", "features.csv")
-
-st.set_page_config(page_title="GitHub Issue Resolution Predictor", page_icon="🐙")
-st.title("🐙 GitHub Issue Resolution Time Predictor")
-st.caption(
-    "Predicts expected time-to-close for a hypothetical issue, based on title, "
-    "labels, author type, and repo -- trained on real closed issues collected "
-    "via the GitHub REST API."
+st.set_page_config(
+    page_title="GitHub Issue Resolution Predictor",
+    page_icon=":material/code:",
+    layout="wide"
 )
 
-model_path = os.path.join(MODEL_DIR, "xgb_pipeline.joblib")
-if not os.path.exists(model_path):
-    st.error("No trained model found. Run collect_data.py -> build_features.py -> train_model.py first.")
-    st.stop()
+load_css()
 
-model = joblib.load(model_path)
-df = pd.read_csv(FEATURES_PATH)
-repos = sorted(df["repo"].unique())
-repo_medians = df.groupby("repo")["resolution_hours"].median().to_dict()
-associations = sorted(df["author_association"].unique())
+st.title(":material/code: GitHub Issue Resolution Predictor")
+st.markdown("""
+Predict the **expected resolution time** of a GitHub issue using a Machine Learning model trained on real GitHub issue history.
 
-with st.form("predict_form"):
-    repo = st.selectbox("Repository", repos)
-    title = st.text_input("Issue title", "Bug: crash when parsing empty input")
-    body_len = st.slider("Body length (characters)", 0, 3000, 200)
-    body_has_code_block = st.checkbox("Includes a code block?", value=True)
-    num_labels = st.slider("Number of labels", 0, 10, 1)
-    author_association = st.selectbox("Author association", associations)
-    is_bot_author = st.checkbox("Opened by a bot?", value=False)
-    created_hour_utc = st.slider("Hour opened (UTC)", 0, 23, 14)
-    created_day_of_week = st.selectbox(
-        "Day of week",
-        options=list(range(7)),
-        format_func=lambda i: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][i],
+Paste the URL of any **public GitHub issue** below.
+""")
+
+st.divider()
+
+with st.form("issue_form"):
+    issue_url = st.text_input(
+        "🔗 GitHub Issue URL",
+        placeholder="https://github.com/microsoft/vscode/issues/251455",
     )
-    submitted = st.form_submit_button("Predict resolution time")
+    submitted = st.form_submit_button(
+        ":material/rocket_launch: Analyze Issue",
+        use_container_width=True
+    )
 
 if submitted:
-    row = pd.DataFrame(
-        [
-            {
-                "title_len_chars": len(title),
-                "title_len_words": len(title.split()),
-                "title_has_number": any(c.isdigit() for c in title),
-                "title_has_question": "?" in title,
-                "body_len": body_len,
-                "body_has_code_block": body_has_code_block,
-                "num_labels": num_labels,
-                "created_hour_utc": created_hour_utc,
-                "created_day_of_week": created_day_of_week,
-                "comments": 0,
-                "repo_median_resolution_hours": repo_medians.get(
-                    repo, df["resolution_hours"].median()
-                ),
-                "is_owner_or_member": author_association in ["OWNER", "MEMBER", "COLLABORATOR"],
-                "is_bot_author": is_bot_author,
-                "is_weekend": created_day_of_week in [5, 6],
-                "repo": repo,
-                "author_association": author_association,
-            }
-        ]
-    )
-
-    pred_log_hours = model.predict(row)[0]
-    pred_hours = np.expm1(pred_log_hours)
-
-    if pred_hours < 24:
-        display = f"{pred_hours:.1f} hours"
+    if not issue_url.strip():
+        st.warning("Please enter a GitHub issue URL.")
     else:
-        display = f"{pred_hours / 24:.1f} days"
+        with st.spinner("Fetching issue from GitHub..."):
+            try:
+                issue = fetch_issue(issue_url)
+                features = build_features(issue)
+                prediction = predict_resolution_time(features)
 
-    st.metric("Predicted time to close", display)
+                st.session_state["issue"] = issue
+                st.session_state["prediction"] = prediction
+
+            except Exception as e:
+                st.error(str(e))
+
+if "issue" in st.session_state:
+
+    issue = st.session_state["issue"]
+    prediction = st.session_state["prediction"]
+
+    repo = issue["repository"]
+    labels = issue.get("labels", [])
+
+    st.success("Issue analyzed successfully!")
+
+    left_pred, right_pred = st.columns([1.2,1])
+
+    with left_pred:
+
+        st.subheader("🤖 ML Prediction")
+
+        days = prediction["days"]
+        hours = prediction["hours"]
+
+        st.metric(
+            "Estimated Resolution Time",
+            f"{days:.2f} Days",
+            f"{hours:.1f} Hours"
+        )
+
+        st.progress(min(days/30,1.0))
+
+        if days < 1:
+            st.success(":material/rocket_launch: Likely to be resolved within a day.")
+        elif days < 7:
+            st.info("📅 Expected within one week.")
+        elif days < 30:
+            st.warning("⏳ May require several weeks.")
+        else:
+            st.error("🐢 May take more than a month.")
+
+    with right_pred:
+
+        st.subheader("📦 Repository")
+
+        c1,c2 = st.columns(2)
+
+        with c1:
+            st.metric("⭐ Stars", f"{repo.get('stargazers_count',0):,}")
+            st.metric("🐞 Open Issues", f"{repo.get('open_issues_count',0):,}")
+
+        with c2:
+            st.metric("🍴 Forks", f"{repo.get('forks_count',0):,}")
+            st.metric("👀 Watchers", f"{repo.get('watchers_count',0):,}")
+
+        st.write(f"**Repository:** {repo['full_name']}")
+        st.write(f"**Language:** {repo.get('language','Unknown')}")
+
+        if repo.get("description"):
+            st.info(repo["description"])
+
+    st.divider()
+
+    st.subheader("🐞 Issue Details")
+
+    st.markdown(f"### {issue['title']}")
+
+    left,right = st.columns([2,1])
+
+    with left:
+        st.write(f"**State:** `{issue['state']}`")
+        st.write(f"**Author Association:** `{issue['author_association']}`")
+        st.write(f"**Comments:** {issue['comments']}")
+
+        st.write("### Labels")
+
+        if labels:
+            cols = st.columns(min(4,len(labels)))
+            for i,label in enumerate(labels):
+                cols[i % len(cols)].markdown(
+                    f"""
+                    <div style="
+                    background-color:#{label['color']};
+                    padding:8px;
+                    border-radius:10px;
+                    text-align:center;
+                    color:white;
+                    font-weight:bold;
+                    margin-bottom:8px;">
+                    {label['name']}
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+        else:
+            st.write("No Labels")
+
+    with right:
+        st.write("### Created")
+        st.write(issue["created_at"][:10])
+
+        st.write("### Updated")
+        st.write(issue["updated_at"][:10])
+
+        st.write("### Repository")
+        st.write(repo["full_name"])
+
+    st.divider()
+
     st.caption(
-        f"({repo} median resolution time in training data = "
-        f"{repo_medians.get(repo, float('nan')):.1f} hours)"
-    )
-
-    st.info(
-        "This only predicts resolution time GIVEN the issue eventually closes -- "
-        "it says nothing about whether an issue will close at all. Treat as "
-        "directional, not precise."
+        "Built with ❤️ using Python • Streamlit • XGBoost • Scikit-learn • GitHub REST API"
     )
