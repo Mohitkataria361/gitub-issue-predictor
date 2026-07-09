@@ -44,10 +44,9 @@ def fetch_issue(url: str):
     api = f"https://api.github.com/repos/{owner}/{repo}/issues/{issue}"
 
     response = requests.get(api, headers=HEADERS)
-
     if response.status_code != 200:
         raise Exception(
-            f"GitHub API Error {response.status_code}"
+            f"GitHub API Error {response.status_code}: {response.text}"
         )
     issue = response.json()
 
