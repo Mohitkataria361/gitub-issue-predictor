@@ -1,5 +1,5 @@
 Model,MAE,RMSE,R2
-Random Forest,1.4088,1.8483,0.4419
+Random Forest,1.4371,1.8644,0.4321
 XGBoost,1.4633,1.8646,0.432
 HistGradientBoosting,1.4628,1.8658,0.4313
 Ridge,1.8064,2.1748,0.2273

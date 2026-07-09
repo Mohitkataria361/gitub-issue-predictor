@@ -116,7 +116,8 @@ def main():
     models = {
         "Ridge": Ridge(alpha=1.0),
         "Random Forest": RandomForestRegressor(
-            n_estimators=250,
+            n_estimators=100,
+            max_depth=15,
             random_state=42,
             n_jobs=-1,
         ),
